@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PriceWatch - Carrefour Price Tracker
 
-## Getting Started
+PriceWatch is a modern, real-time price tracking dashboard designed to help users monitor product prices on Carrefour Kenya. It provides a sleek interface to track price fluctuations, identify deals, and visualize savings over time.
 
-First, run the development server:
+## 🚀 Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### 📊 Interactive Dashboard
+- **Real-time Stats**: Instantly view total tracked products, active deals, total calculated savings, and the last update timestamp.
+- **Smart Alerts**: Visual indicators for price drops and "Great Deal" badges when products are significantly discounted.
+- **Responsive Design**: A fully responsive layout with a collapsible sidebar for desktop and mobile-friendly navigation.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 🛍️ Product Tracking
+- **Easy Addition**: Simply paste a Carrefour product URL to start tracking. The system automatically scrapes the product name, SKU, price, and image.
+- **Price History**: View historical price data for each product to understand trends and make informed buying decisions.
+- **Deal Detection**: Automatically calculates discounts and highlights products selling below their original or retail price.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 🔄 Automated Monitoring
+- **Background Polling**: The application automatically checks for price updates in the background to ensure data is always current.
+- **Local Persistence**: All tracked items and history are saved locally, ensuring your data persists across sessions.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 🎨 Modern UI/UX
+- **Clean Interface**: Built with a focus on usability and aesthetics, featuring a clutter-free grid layout.
+- **Detailed Views**: Click on any product to open a detailed modal with high-resolution images, comprehensive price breakdowns, and direct purchase links.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🛠️ Built With
+- **Next.js 15** (App Router)
+- **React 19**
+- **Tailwind CSS 4**
+- **Cheerio** (for robust web scraping)
+- **Lucide React** (for beautiful iconography)
