@@ -3,6 +3,14 @@ export interface PricePoint {
     date: string;
 }
 
+export interface Project {
+    id: string;
+    name: string;
+    category: string;
+    createdAt: string;
+    color?: string;
+}
+
 export interface TrackedItem {
     id: string;
     sku: string;
@@ -15,6 +23,9 @@ export interface TrackedItem {
     priceHistory: PricePoint[];
     lastUpdated: string | null;
     alertTriggered: boolean;
+    projectId?: string;
+    status?: 'active' | 'deleted';
+    dateAdded?: string;
 }
 
 export interface AlertMessage {
@@ -24,4 +35,10 @@ export interface AlertMessage {
     message: string;
     time: string;
     type: 'success' | 'alert' | 'update' | 'error';
+}
+
+export interface AppState {
+    trackedItems: TrackedItem[];
+    projects: Project[];
+    deletedItemsCount: number;
 }

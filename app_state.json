@@ -1,0 +1,99 @@
+{
+  "application": {
+    "name": "PriceWatch (Carrefour Price Tracker)",
+    "description": "A Next.js application for tracking product prices on Carrefour Kenya, providing real-time monitoring, historical data analysis, and deal alerts.",
+    "version": "1.0.0",
+    "techStack": [
+      "Next.js 14 (App Router)",
+      "TypeScript",
+      "Tailwind CSS",
+      "Cheerio (for scraping)",
+      "Lucide React (Icons)"
+    ]
+  },
+  "coreFeatures": {
+    "priceTracking": {
+      "description": "Monitors product prices and detects changes.",
+      "interval": "Background polling every 10 minutes",
+      "manualCheck": "User can manually trigger checks via UI"
+    },
+    "webScraping": {
+      "target": "Carrefour Kenya",
+      "method": "Server-side scraping using Cheerio",
+      "capabilities": [
+        "Extracts current price",
+        "Extracts original price (for discounts)",
+        "Extracts product name and SKU",
+        "Extracts product image",
+        "Handles dynamic data layers and JSON-LD",
+        "Rate limiting and error handling"
+      ]
+    },
+    "dataPersistence": {
+      "storage": "LocalStorage (Client-side)",
+      "key": "price-tracker-items"
+    }
+  },
+  "dataModels": {
+    "TrackedItem": {
+      "fields": [
+        "id (string)",
+        "sku (string)",
+        "name (string)",
+        "link (string)",
+        "retailPrice (number)",
+        "originalPrice (optional number)",
+        "currentPrice (number | null)",
+        "imageUrl (optional string)",
+        "priceHistory (Array<{price: number, date: string}>)",
+        "lastUpdated (string | null)",
+        "alertTriggered (boolean)"
+      ]
+    },
+    "AlertMessage": {
+      "fields": [
+        "id (number)",
+        "sku (string)",
+        "name (string)",
+        "message (string)",
+        "time (string)",
+        "type ('success' | 'alert' | 'update' | 'error')"
+      ]
+    }
+  },
+  "userInterface": {
+    "layout": "Responsive Dashboard with Sidebar",
+    "components": {
+      "Sidebar": "Navigation (Dashboard, Tracked Items, Settings)",
+      "TopBar": "Search functionality, Background check status indicator",
+      "StatsGrid": {
+        "cards": [
+          "Total Products",
+          "Active Deals",
+          "Total Savings",
+          "Last Check Time"
+        ]
+      },
+      "ProductGrid": "Grid of tracked items showing name, price, discount badge, and actions",
+      "AddProductModal": "Input for Carrefour URL to start tracking a new item",
+      "DetailModal": {
+        "layout": "Responsive (Side-by-side on Desktop, Stacked on Mobile)",
+        "features": [
+          "Product Image (Auto-fetching if missing)",
+          "Current Price (Large display)",
+          "Original Price & Discount Badge (if on sale)",
+          "Last Offer Price (Shows previous low price if not currently on sale)",
+          "Price History List (Scrollable)",
+          "Buy on Carrefour Link",
+          "Last Updated Timestamp"
+        ]
+      }
+    }
+  },
+  "recentEnhancements": [
+    "Fixed Detail Modal layout for desktop (Side-by-side grid)",
+    "Implemented automatic fetching of missing product images",
+    "Added 'Last Offer Price' display logic for historical deal context",
+    "Improved scraping logic to handle comma-separated prices"
+  ]
+}

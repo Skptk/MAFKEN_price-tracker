@@ -1,6 +1,6 @@
-# PriceWatch - Carrefour Price Tracker
+# aggregateDuka - Carrefour Price Tracker
 
-PriceWatch is a modern, real-time price tracking dashboard designed to help users monitor product prices on Carrefour Kenya. It provides a sleek interface to track price fluctuations, identify deals, and visualize savings over time.
+aggregateDuka is a modern, real-time price tracking dashboard designed to help users monitor product prices on Carrefour Kenya. It provides a sleek interface to track price fluctuations, identify deals, and visualize savings over time.
 
 ## 🚀 Features
 

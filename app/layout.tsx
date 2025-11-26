@@ -1,12 +1,18 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Funnel_Display } from 'next/font/google';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
+const funnelDisplay = Funnel_Display({
+  subsets: ['latin'],
+  variable: '--font-funnel-display',
+});
 
 export const metadata: Metadata = {
-  title: 'Carrefour Price Tracker',
-  description: 'Track prices and get alerts on deals',
+  title: 'aggregateDuka - Track Prices & Save',
+  description: 'Track prices from Carrefour Kenya and get alerts when they drop.',
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
@@ -16,7 +22,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={funnelDisplay.variable}>{children}</body>
     </html>
   );
 }
