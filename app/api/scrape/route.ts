@@ -18,27 +18,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Add 1-2 second delay before making request to avoid rate limiting
-    await delay(1000 + Math.random() * 1000);
+    // Rate limiting: Add 2-4 second delay before making request to be respectful to server
+    await delay(2000 + Math.random() * 2000);
 
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      cache: 'no-store'
-    });
+    let html = '';
+    let finalUrl = url;
 
-    if (response.status === 429) {
-      throw new Error('Rate limit exceeded. Please wait a few minutes before trying again.');
+    // Try original URL first
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        cache: 'no-store'
+      });
+
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded. Please wait a few minutes before trying again.');
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      html = await response.text();
+    } catch (urlError) {
+      // If original URL fails and we have SKU, try SKU-based search
+      if (sku) {
+        console.log(`Original URL failed, trying SKU fallback for ${sku}`);
+
+        // Carrefour Kenya search URL pattern
+        const searchUrl = `https://www.carrefourkenya.com/mafken/en/search/?text=${encodeURIComponent(sku)}`;
+
+        const searchResponse = await fetch(searchUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          cache: 'no-store'
+        });
+
+        if (!searchResponse.ok) {
+          throw urlError; // Re-throw original error if SKU search also fails
+        }
+
+        html = await searchResponse.text();
+        finalUrl = searchUrl;
+      } else {
+        throw urlError; // No SKU, can't fallback
+      }
     }
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const html = await response.text();
     const $ = cheerio.load(html);
 
     let price = null;
@@ -142,6 +174,7 @@ export async function POST(request: NextRequest) {
       name: name || 'Product',
       imageUrl,
       sku,
+      usedSkuFallback: finalUrl !== url,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

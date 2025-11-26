@@ -26,6 +26,9 @@ export interface TrackedItem {
     projectId?: string;
     status?: 'active' | 'deleted';
     dateAdded?: string;
+    offerStartDate?: string;
+    offerEndDate?: string;
+    lastOfferDuration?: number;
 }
 
 export interface AlertMessage {

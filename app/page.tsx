@@ -6,8 +6,10 @@ import SavingsChart from './components/SavingsChart';
 import { TrackedItem, AlertMessage, Project } from '@/lib/types';
 import { extractSKUFromLink, extractProductName, isBelowThreshold, pricePercentage } from '@/lib/utils';
 
-const MIN_CHECK_INTERVAL = 5 * 60 * 1000;
-const BACKGROUND_POLL_INTERVAL = 10 * 60 * 1000;
+// Rate limiting: Check items max once per 15 minutes
+const MIN_CHECK_INTERVAL = 15 * 60 * 1000;
+// Background polling: Check all items every 30 minutes
+const BACKGROUND_POLL_INTERVAL = 30 * 60 * 1000;
 
 export default function PriceTracker() {
   const [trackedItems, setTrackedItems] = useState<TrackedItem[]>([]);
@@ -26,6 +28,7 @@ export default function PriceTracker() {
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [targetSavings, setTargetSavings] = useState<number | null>(null);
   const [targetInput, setTargetInput] = useState('');
+  const [showAlertsPanel, setShowAlertsPanel] = useState(false);
 
   // Load target savings from local storage
   useEffect(() => {
@@ -110,7 +113,8 @@ export default function PriceTracker() {
     setBackgroundChecking(true);
     for (const item of itemsToCheck) {
       await checkPrice(item, true);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 3-5 second delay between items to avoid overwhelming server
+      await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
     }
     setBackgroundChecking(false);
   };
@@ -220,6 +224,13 @@ export default function PriceTracker() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: item.link, sku: item.sku })
       });
+
+      // Handle non-200 responses gracefully
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
       const data = await response.json();
       if (!data.success || !data.price) throw new Error(data.error || 'Could not fetch price');
       setTrackedItems(prev => prev.map(i => {
@@ -227,6 +238,55 @@ export default function PriceTracker() {
           const basePrice = data.originalPrice || i.retailPrice;
           const threshold = basePrice * 0.5;
           const shouldAlert = data.price < threshold && !i.alertTriggered;
+
+          // Offer detection
+          const hasOffer = data.price < basePrice;
+          const hadOffer = i.offerStartDate && !i.offerEndDate;
+          const now = new Date().toISOString();
+
+          let offerStartDate = i.offerStartDate;
+          let offerEndDate = i.offerEndDate;
+          let lastOfferDuration = i.lastOfferDuration;
+
+          // Offer started
+          if (hasOffer && !hadOffer) {
+            offerStartDate = now;
+            offerEndDate = undefined;
+            const savings = basePrice - data.price;
+            const percentOff = Math.round((savings / basePrice) * 100);
+            const newAlert: AlertMessage = {
+              id: Date.now(),
+              sku: i.sku,
+              name: i.name,
+              message: `🎉 New offer on ${i.name}! Save KES ${savings.toFixed(2)} (${percentOff}% off)`,
+              time: new Date().toLocaleTimeString(),
+              type: 'alert',
+            };
+            setAlerts(p => [newAlert, ...p.slice(0, 9)]);
+          }
+
+          // Offer ended
+          if (!hasOffer && hadOffer && i.offerStartDate) {
+            offerEndDate = now;
+            const duration = new Date(now).getTime() - new Date(i.offerStartDate).getTime();
+            lastOfferDuration = duration;
+
+            // Format duration
+            const days = Math.floor(duration / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((duration % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const durationText = days > 0 ? `${days} day${days > 1 ? 's' : ''}` : `${hours} hour${hours > 1 ? 's' : ''}`;
+
+            const newAlert: AlertMessage = {
+              id: Date.now(),
+              sku: i.sku,
+              name: i.name,
+              message: `⏰ Offer ended on ${i.name}. It lasted ${durationText}`,
+              time: new Date().toLocaleTimeString(),
+              type: 'update',
+            };
+            setAlerts(p => [newAlert, ...p.slice(0, 9)]);
+          }
+
           if (shouldAlert) {
             const newAlert: AlertMessage = {
               id: Date.now(),
@@ -238,6 +298,7 @@ export default function PriceTracker() {
             };
             setAlerts(p => [newAlert, ...p.slice(0, 9)]);
           }
+
           return {
             ...i,
             currentPrice: data.price,
@@ -248,12 +309,16 @@ export default function PriceTracker() {
               ...i.priceHistory.slice(0, 29)
             ],
             alertTriggered: shouldAlert || i.alertTriggered,
-            imageUrl: data.imageUrl || i.imageUrl, // Update image URL if available
+            imageUrl: data.imageUrl || i.imageUrl,
+            offerStartDate,
+            offerEndDate,
+            lastOfferDuration,
           };
         }
         return i;
       }));
     } catch (error) {
+      // Only show alerts to user for manual checks, silently log background check failures
       if (!isBackground) {
         const errorAlert: AlertMessage = {
           id: Date.now(),
@@ -264,6 +329,9 @@ export default function PriceTracker() {
           type: 'error',
         };
         setAlerts(prev => [errorAlert, ...prev.slice(0, 4)]);
+      } else {
+        // Silent logging for background checks - no console spam
+        console.debug(`Background check failed for ${item.name}:`, error instanceof Error ? error.message : 'Unknown');
       }
     } finally {
       if (!isBackground) setLoading(false);
@@ -418,9 +486,14 @@ export default function PriceTracker() {
             <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-gray-500 hover:text-gray-700">
               <div className="w-5 h-5 border-2 border-current rounded-md flex items-center justify-center text-[10px] font-bold">@</div>
             </button>
-            <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-gray-500 hover:text-gray-700 relative">
+            <button
+              onClick={() => setShowAlertsPanel(!showAlertsPanel)}
+              className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-gray-500 hover:text-gray-700 relative"
+            >
               <Clock size={20} />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+              {alerts.length > 0 && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+              )}
             </button>
             <div className="flex items-center gap-3 ml-2">
               <div className="w-10 h-10 rounded-full bg-orange-200 overflow-hidden">
@@ -431,6 +504,47 @@ export default function PriceTracker() {
                 <p className="text-xs text-gray-400">tmichael20@mail.com</p>
               </div>
             </div>
+
+            {/* Alerts Panel */}
+            {showAlertsPanel && (
+              <div className="absolute top-16 right-4 sm:right-8 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-xl border border-gray-200 z-50 max-h-96 overflow-hidden flex flex-col">
+                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="font-bold text-gray-900">Notifications</h3>
+                  <button
+                    onClick={() => setShowAlertsPanel(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="overflow-y-auto flex-1">
+                  {alerts.length === 0 ? (
+                    <div className="p-8 text-center text-gray-400">
+                      <Clock size={32} className="mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No notifications yet</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {alerts.map(alert => (
+                        <div key={alert.id} className="p-4 hover:bg-gray-50 transition-colors">
+                          <div className="flex items-start gap-3">
+                            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${alert.type === 'alert' ? 'bg-green-500' :
+                              alert.type === 'error' ? 'bg-red-500' :
+                                alert.type === 'success' ? 'bg-blue-500' :
+                                  'bg-gray-400'
+                              }`}></div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-gray-900 font-medium">{alert.message}</p>
+                              <p className="text-xs text-gray-400 mt-1">{alert.time}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </header>
 
@@ -458,7 +572,7 @@ export default function PriceTracker() {
                 {/* Card 1: Projects (Green) */}
                 <div className="bg-gradient-to-br from-[#064e3b] to-[#065f46] rounded-[2rem] p-6 text-white shadow-lg relative overflow-hidden">
                   <div className="flex items-start justify-between mb-4 relative z-10">
-                    <p className="text-green-100 font-medium">Projects</p>
+                    <p className="text-green-100 font-medium">Aggregate Projects</p>
                     <button
                       onClick={() => setShowProjectModal(true)}
                       className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-colors"
@@ -493,7 +607,7 @@ export default function PriceTracker() {
                 {/* Card 3: Running Projects (White) */}
                 <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
                   <div className="flex items-start justify-between mb-4">
-                    <p className="text-gray-900 font-bold">Running Projects</p>
+                    <p className="text-gray-900 font-bold">Tracking Products</p>
                     <div className="w-8 h-8 border border-gray-200 rounded-full flex items-center justify-center">
                       <TrendingDown className="text-gray-400 rotate-180" size={16} />
                     </div>
@@ -508,7 +622,7 @@ export default function PriceTracker() {
                 {/* Card 4: Pending Project (White) */}
                 <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
                   <div className="flex items-start justify-between mb-4">
-                    <p className="text-gray-900 font-bold">Pending Project</p>
+                    <p className="text-gray-900 font-bold">Active Offers</p>
                     <div className="w-8 h-8 border border-gray-200 rounded-full flex items-center justify-center">
                       <TrendingDown className="text-gray-400 rotate-180" size={16} />
                     </div>
@@ -589,9 +703,76 @@ export default function PriceTracker() {
                         <div className="p-6">
                           <div className="flex items-start justify-between mb-4">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">In Progress</p>
+                              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                {(() => {
+                                  const basePrice = item.originalPrice || item.retailPrice;
+                                  const hasActiveOffer = item.offerStartDate && !item.offerEndDate && item.currentPrice && item.currentPrice < basePrice;
+                                  const hadOfferRecently = item.offerEndDate && !hasActiveOffer;
+
+                                  // Predictive logic for "Possible Return"
+                                  const shouldShowPrediction = hadOfferRecently && item.offerEndDate && item.lastOfferDuration;
+                                  let showPossibleReturn = false;
+
+                                  if (shouldShowPrediction) {
+                                    const timeSinceOfferEnded = Date.now() - new Date(item.offerEndDate).getTime();
+                                    // If last offer duration was X, and time since it ended is >= X, suggest it might return
+                                    const estimatedReturnTime = item.lastOfferDuration || 0;
+                                    showPossibleReturn = timeSinceOfferEnded >= estimatedReturnTime * 0.8; // 80% threshold
+                                  }
+
+                                  if (hasActiveOffer) {
+                                    return (
+                                      <>
+                                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                        <p className="text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Offer Available</p>
+                                      </>
+                                    );
+                                  }
+
+                                  if (showPossibleReturn) {
+                                    const days = Math.floor((item.lastOfferDuration || 0) / (1000 * 60 * 60 * 24));
+                                    return (
+                                      <>
+                                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                                        <p className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">
+                                          Possible Return (~{days}d)
+                                        </p>
+                                      </>
+                                    );
+                                  }
+
+                                  if (hadOfferRecently) {
+                                    return (
+                                      <>
+                                        <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                                        <p className="text-xs text-red-700 bg-red-100 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Offer Ended</p>
+                                      </>
+                                    );
+                                  }
+
+                                  return (
+                                    <>
+                                      <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                                      <p className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Tracking Offer Logic</p>
+                                    </>
+                                  );
+                                })()}
+                                {(() => {
+                                  const basePrice = item.originalPrice || item.retailPrice;
+                                  const hasActiveOffer = item.offerStartDate && !item.offerEndDate && item.currentPrice && item.currentPrice < basePrice;
+                                  if (hasActiveOffer && item.offerStartDate) {
+                                    const duration = Date.now() - new Date(item.offerStartDate).getTime();
+                                    const days = Math.floor(duration / (1000 * 60 * 60 * 24));
+                                    const hours = Math.floor((duration % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                                    const durationText = days > 0 ? `${days}d` : `${hours}h`;
+                                    return (
+                                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                                        Offer: {durationText}
+                                      </span>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                               <h4 className="font-bold text-gray-900 text-lg leading-tight mb-1 line-clamp-2 group-hover:text-green-800 transition-colors">{item.name}</h4>
                               <p className="text-xs text-gray-400">SKU: {item.sku}</p>
@@ -858,6 +1039,71 @@ export default function PriceTracker() {
                         Yes! aggregateDuka is completely free to use. We do not charge any fees for tracking prices or sending alerts.
                       </div>
                     </details>
+
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer list-none p-4 bg-gray-50 rounded-xl font-medium text-gray-900 hover:bg-gray-100 transition-colors">
+                        <span>What do the different status tags mean?</span>
+                        <span className="transition group-open:rotate-180">
+                          <TrendingDown size={16} />
+                        </span>
+                      </summary>
+                      <div className="text-gray-600 mt-3 px-4 pb-2">
+                        <ul className="list-disc list-inside space-y-1">
+                          <li><strong className="text-green-700">Offer Available:</strong> The product currently has an active discount</li>
+                          <li><strong className="text-red-700">Offer Ended:</strong> A recent offer has ended</li>
+                          <li><strong className="text-amber-700">Possible Return:</strong> Based on historical patterns, an offer might return soon (shows estimated days)</li>
+                          <li><strong className="text-gray-700">Tracking Offer Logic:</strong> We're learning this product's offer patterns</li>
+                        </ul>
+                      </div>
+                    </details>
+
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer list-none p-4 bg-gray-50 rounded-xl font-medium text-gray-900 hover:bg-gray-100 transition-colors">
+                        <span>How do I view my notifications?</span>
+                        <span className="transition group-open:rotate-180">
+                          <TrendingDown size={16} />
+                        </span>
+                      </summary>
+                      <div className="text-gray-600 mt-3 px-4 pb-2">
+                        Click the <strong>Clock icon</strong> in the top right corner to view all your notifications. You'll see alerts for offer starts, offer ends, and significant price drops. A red dot appears when you have new notifications.
+                      </div>
+                    </details>
+
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer list-none p-4 bg-gray-50 rounded-xl font-medium text-gray-900 hover:bg-gray-100 transition-colors">
+                        <span>How does the "Possible Return" prediction work?</span>
+                        <span className="transition group-open:rotate-180">
+                          <TrendingDown size={16} />
+                        </span>
+                      </summary>
+                      <div className="text-gray-600 mt-3 px-4 pb-2">
+                        aggregateDuka learns from each product's offer history. When an offer ends, we track how long it lasted. If a similar amount of time passes, we predict the offer might return and show a "Possible Return" tag with an estimated timeframe.
+                      </div>
+                    </details>
+
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer list-none p-4 bg-gray-50 rounded-xl font-medium text-gray-900 hover:bg-gray-100 transition-colors">
+                        <span>Can I see how long offers last?</span>
+                        <span className="transition group-open:rotate-180">
+                          <TrendingDown size={16} />
+                        </span>
+                      </summary>
+                      <div className="text-gray-600 mt-3 px-4 pb-2">
+                        Yes! Click "View Details" on any product to see offer information. For active offers, you'll see how long they've been running. For ended offers, you'll see how long they lasted and when they ended.
+                      </div>
+                    </details>
+
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer list-none p-4 bg-gray-50 rounded-xl font-medium text-gray-900 hover:bg-gray-100 transition-colors">
+                        <span>What happens if a product's URL changes?</span>
+                        <span className="transition group-open:rotate-180">
+                          <TrendingDown size={16} />
+                        </span>
+                      </summary>
+                      <div className="text-gray-600 mt-3 px-4 pb-2">
+                        No problem! If the original URL fails, aggregateDuka automatically searches for the product using its SKU number. This means your tracked products will continue working even if Carrefour changes their URLs.
+                      </div>
+                    </details>
                   </div>
                 </div>
               </div>
@@ -1062,6 +1308,52 @@ export default function PriceTracker() {
                       <Clock size={14} />
                       <span>Last updated {getRelativeTime(selectedProduct.lastUpdated)}</span>
                     </div>
+
+                    {/* Offer Information */}
+                    {(() => {
+                      const basePrice = selectedProduct.originalPrice || selectedProduct.retailPrice;
+                      const hasActiveOffer = selectedProduct.offerStartDate && !selectedProduct.offerEndDate && selectedProduct.currentPrice && selectedProduct.currentPrice < basePrice;
+                      const hadRecentOffer = selectedProduct.offerEndDate && selectedProduct.lastOfferDuration;
+
+                      if (hasActiveOffer && selectedProduct.offerStartDate) {
+                        const duration = Date.now() - new Date(selectedProduct.offerStartDate).getTime();
+                        const days = Math.floor(duration / (1000 * 60 * 60 * 24));
+                        const hours = Math.floor((duration % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        const durationText = days > 0 ? `${days} day${days > 1 ? 's' : ''}` : `${hours} hour${hours > 1 ? 's' : ''}`;
+
+                        return (
+                          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                            <h5 className="font-bold text-green-900 mb-2 flex items-center gap-2">
+                              <TrendingDown size={16} />
+                              Active Offer
+                            </h5>
+                            <p className="text-sm text-green-700">
+                              This offer has been active for <strong>{durationText}</strong>
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      if (hadRecentOffer && selectedProduct.lastOfferDuration) {
+                        const days = Math.floor(selectedProduct.lastOfferDuration / (1000 * 60 * 60 * 24));
+                        const hours = Math.floor((selectedProduct.lastOfferDuration % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        const durationText = days > 0 ? `${days} day${days > 1 ? 's' : ''}` : `${hours} hour${hours > 1 ? 's' : ''}`;
+
+                        return (
+                          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                            <h5 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                              <Clock size={16} />
+                              Last Offer
+                            </h5>
+                            <p className="text-sm text-gray-600">
+                              The last offer lasted <strong>{durationText}</strong> and ended {getRelativeTime(selectedProduct.offerEndDate || null)}
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })()}
 
                     {/* Project Assignment */}
                     <div className="pt-4 border-t border-gray-100">
