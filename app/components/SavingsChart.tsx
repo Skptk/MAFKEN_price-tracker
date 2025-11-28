@@ -11,7 +11,7 @@ interface SavingsChartProps {
     onSetTarget?: () => void;
 }
 
-export default function SavingsChart({ trackedItems, targetSavings, onSetTarget }: SavingsChartProps) {
+export default function SavingsChart({ trackedItems = [], targetSavings, onSetTarget }: SavingsChartProps) {
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
     // Process data to get daily potential savings for the last 14 days
@@ -85,13 +85,19 @@ export default function SavingsChart({ trackedItems, targetSavings, onSetTarget 
     // Target Line Y position
     const targetY = targetSavings ? height - (targetSavings / maxSavings) * height : null;
 
+    // Format large numbers (e.g. 150000 -> 150k)
+    const formatValue = (value: number) => {
+        if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+        if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
+        return value.toLocaleString();
+    };
+
     return (
         <div className="w-full h-full flex flex-col">
             {/* Header with Stats */}
             <div className="flex items-start justify-between mb-6">
                 <div>
                     <div className="flex items-center gap-3">
-                        <h3 className="font-bold text-gray-900 text-lg">Savings Over Time</h3>
                         {onSetTarget && (
                             <button
                                 onClick={onSetTarget}
@@ -114,149 +120,152 @@ export default function SavingsChart({ trackedItems, targetSavings, onSetTarget 
                 </div>
             </div>
 
-            {/* Chart */}
-            <div className="flex-1 relative min-h-[200px] w-full"
-                onMouseLeave={() => setHoveredIndex(null)}>
+            {/* Chart Container */}
+            <div className="flex-1 flex flex-col min-h-0" onMouseLeave={() => setHoveredIndex(null)}>
+                <div className="flex-1 relative w-full">
+                    {/* Y-Axis Labels (Right side) */}
+                    <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-between text-[10px] text-gray-400 font-medium pointer-events-none z-10 text-right pr-1 w-10">
+                        <span>{formatValue(Math.round(maxSavings))}</span>
+                        <span>{formatValue(Math.round(maxSavings * 0.75))}</span>
+                        <span>{formatValue(Math.round(maxSavings * 0.5))}</span>
+                        <span>{formatValue(Math.round(maxSavings * 0.25))}</span>
+                        <span>0</span>
+                    </div>
 
-                {/* Y-Axis Labels (Right side) */}
-                <div className="absolute right-0 top-0 bottom-6 flex flex-col justify-between text-[10px] text-gray-400 font-medium pointer-events-none z-10 text-right pr-2">
-                    <span>{Math.round(maxSavings).toLocaleString()}</span>
-                    <span>{Math.round(maxSavings * 0.75).toLocaleString()}</span>
-                    <span>{Math.round(maxSavings * 0.5).toLocaleString()}</span>
-                    <span>{Math.round(maxSavings * 0.25).toLocaleString()}</span>
-                    <span>0</span>
+                    {/* Chart Clipper */}
+                    <div className="absolute inset-0 overflow-hidden pr-10">
+                        {/* SVG Chart */}
+                        <svg
+                            className="w-full h-full overflow-visible"
+                            viewBox={`0 0 ${width} ${height}`}
+                            preserveAspectRatio="none"
+                        >
+                            <defs>
+                                <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#064e3b" stopOpacity="0.2" />
+                                    <stop offset="100%" stopColor="#064e3b" stopOpacity="0.0" />
+                                </linearGradient>
+                                <mask id="gridMask">
+                                    <rect x="0" y="0" width={width} height={height} fill="white" />
+                                </mask>
+                            </defs>
+
+                            {/* Grid Lines */}
+                            <g className="opacity-10">
+                                {[0, 0.25, 0.5, 0.75, 1].map((tick) => (
+                                    <line
+                                        key={tick}
+                                        x1="0"
+                                        y1={height * tick}
+                                        x2={width}
+                                        y2={height * tick}
+                                        stroke="currentColor"
+                                        strokeWidth="0.2"
+                                        strokeDasharray="1,1"
+                                    />
+                                ))}
+                            </g>
+
+                            {/* Target Line */}
+                            {targetY !== null && (
+                                <g>
+                                    <line
+                                        x1="0" y1={targetY} x2={width} y2={targetY}
+                                        stroke="#f59e0b"
+                                        strokeWidth="0.3"
+                                        strokeDasharray="3,3"
+                                        opacity="0.6"
+                                    />
+                                    <text
+                                        x="0" y={targetY - 1.5}
+                                        fill="#f59e0b"
+                                        fontSize="2"
+                                        opacity="0.8"
+                                    >
+                                        Target: {formatValue(targetSavings || 0)}
+                                    </text>
+                                </g>
+                            )}
+
+                            {/* Area Fill */}
+                            <path d={areaPath} fill="url(#chartGradient)" />
+
+                            {/* Line Stroke */}
+                            <path
+                                d={linePath}
+                                fill="none"
+                                stroke="#064e3b"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                vectorEffect="non-scaling-stroke"
+                            />
+
+                            {/* Hover Effects */}
+                            {chartData.map((d, i) => {
+                                const x = (i / (chartData.length - 1)) * width;
+                                const y = height - (d.savings / maxSavings) * height;
+
+                                return (
+                                    <g key={i} onMouseEnter={() => setHoveredIndex(i)}>
+                                        {/* Invisible hit area */}
+                                        <rect
+                                            x={x - (width / chartData.length / 2)}
+                                            y="0"
+                                            width={width / chartData.length}
+                                            height={height}
+                                            fill="transparent"
+                                            className="cursor-crosshair"
+                                        />
+
+                                        {/* Active Point Indicator */}
+                                        {hoveredIndex === i && (
+                                            <>
+                                                <line
+                                                    x1={x} y1="0" x2={x} y2={height}
+                                                    stroke="#064e3b"
+                                                    strokeWidth="0.5"
+                                                    strokeDasharray="2,2"
+                                                    opacity="0.5"
+                                                    vectorEffect="non-scaling-stroke"
+                                                />
+                                                <circle
+                                                    cx={x} cy={y} r="1.5"
+                                                    fill="white"
+                                                    stroke="#064e3b"
+                                                    strokeWidth="1"
+                                                    vectorEffect="non-scaling-stroke"
+                                                />
+                                            </>
+                                        )}
+                                    </g>
+                                );
+                            })}
+                        </svg>
+                    </div>
+
+                    {/* Tooltip */}
+                    {hoveredIndex !== null && (
+                        <div
+                            className="absolute z-20 bg-gray-900 text-white text-xs rounded-lg py-1.5 px-3 shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full"
+                            style={{
+                                left: `${(hoveredIndex / (chartData.length - 1)) * 100}%`,
+                                top: `${100 - (chartData[hoveredIndex].savings / maxSavings) * 100}%`,
+                                marginTop: '-10px'
+                            }}
+                        >
+                            <div className="font-bold whitespace-nowrap">KES {chartData[hoveredIndex].savings.toLocaleString()}</div>
+                            <div className="text-gray-400 text-[10px]">{chartData[hoveredIndex].fullDate}</div>
+                        </div>
+                    )}
                 </div>
 
-                {/* SVG Chart */}
-                <svg
-                    className="w-full h-full overflow-visible"
-                    viewBox={`0 0 ${width} ${height}`}
-                    preserveAspectRatio="none"
-                >
-                    <defs>
-                        <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#064e3b" stopOpacity="0.2" />
-                            <stop offset="100%" stopColor="#064e3b" stopOpacity="0.0" />
-                        </linearGradient>
-                        <mask id="gridMask">
-                            <rect x="0" y="0" width={width} height={height} fill="white" />
-                        </mask>
-                    </defs>
-
-                    {/* Grid Lines */}
-                    <g className="opacity-10">
-                        {[0, 0.25, 0.5, 0.75, 1].map((tick) => (
-                            <line
-                                key={tick}
-                                x1="0"
-                                y1={height * tick}
-                                x2={width}
-                                y2={height * tick}
-                                stroke="currentColor"
-                                strokeWidth="0.2"
-                                strokeDasharray="1,1"
-                            />
-                        ))}
-                    </g>
-
-                    {/* Target Line */}
-                    {targetY !== null && (
-                        <g>
-                            <line
-                                x1="0" y1={targetY} x2={width} y2={targetY}
-                                stroke="#f59e0b"
-                                strokeWidth="0.3"
-                                strokeDasharray="3,3"
-                                opacity="0.6"
-                            />
-                            <text
-                                x="0" y={targetY - 1.5}
-                                fill="#f59e0b"
-                                fontSize="2"
-                                opacity="0.8"
-                            >
-                                Target: {targetSavings?.toLocaleString()}
-                            </text>
-                        </g>
-                    )}
-
-                    {/* Area Fill */}
-                    <path d={areaPath} fill="url(#chartGradient)" />
-
-                    {/* Line Stroke */}
-                    <path
-                        d={linePath}
-                        fill="none"
-                        stroke="#064e3b"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        vectorEffect="non-scaling-stroke"
-                    />
-
-                    {/* Hover Effects */}
-                    {chartData.map((d, i) => {
-                        const x = (i / (chartData.length - 1)) * width;
-                        const y = height - (d.savings / maxSavings) * height;
-
-                        return (
-                            <g key={i} onMouseEnter={() => setHoveredIndex(i)}>
-                                {/* Invisible hit area */}
-                                <rect
-                                    x={x - (width / chartData.length / 2)}
-                                    y="0"
-                                    width={width / chartData.length}
-                                    height={height}
-                                    fill="transparent"
-                                    className="cursor-crosshair"
-                                />
-
-                                {/* Active Point Indicator */}
-                                {hoveredIndex === i && (
-                                    <>
-                                        <line
-                                            x1={x} y1="0" x2={x} y2={height}
-                                            stroke="#064e3b"
-                                            strokeWidth="0.5"
-                                            strokeDasharray="2,2"
-                                            opacity="0.5"
-                                            vectorEffect="non-scaling-stroke"
-                                        />
-                                        <circle
-                                            cx={x} cy={y} r="1.5"
-                                            fill="white"
-                                            stroke="#064e3b"
-                                            strokeWidth="1"
-                                            vectorEffect="non-scaling-stroke"
-                                        />
-                                    </>
-                                )}
-                            </g>
-                        );
-                    })}
-                </svg>
-
-                {/* X-Axis Labels */}
-                <div className="absolute bottom-0 left-0 right-0 flex justify-between text-[10px] text-gray-400 font-medium px-1 pt-2">
-                    {chartData.filter((_, i) => i % 2 === 0).map((d, i) => ( // Show every other label to prevent crowding
+                {/* X-Axis Labels (Outside SVG) */}
+                <div className="flex justify-between text-[10px] text-gray-400 font-medium px-1 pt-2 pr-10">
+                    {chartData.filter((_, i) => i % 2 === 0).map((d, i) => (
                         <span key={i}>{d.date}</span>
                     ))}
                 </div>
-
-                {/* Tooltip */}
-                {hoveredIndex !== null && (
-                    <div
-                        className="absolute z-20 bg-gray-900 text-white text-xs rounded-lg py-1.5 px-3 shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full"
-                        style={{
-                            left: `${(hoveredIndex / (chartData.length - 1)) * 100}%`,
-                            top: `${100 - (chartData[hoveredIndex].savings / maxSavings) * 100}%`,
-                            marginTop: '-10px'
-                        }}
-                    >
-                        <div className="font-bold whitespace-nowrap">KES {chartData[hoveredIndex].savings.toLocaleString()}</div>
-                        <div className="text-gray-400 text-[10px]">{chartData[hoveredIndex].fullDate}</div>
-                    </div>
-                )}
             </div>
         </div>
     );

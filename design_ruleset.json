@@ -1,0 +1,112 @@
+{
+    "meta": {
+        "appName": "arbitrageDuka",
+        "motto": "Arbitrage your shopping today",
+        "version": "1.0.0",
+        "lastUpdated": "2025-11-27"
+    },
+    "typography": {
+        "fontFamily": {
+            "primary": "Funnel Display, sans-serif",
+            "variable": "--font-funnel-display"
+        },
+        "headings": {
+            "h1": "text-5xl sm:text-7xl font-extrabold tracking-tight",
+            "h2": "text-3xl font-bold",
+            "h3": "text-lg or text-xl font-bold"
+        },
+        "body": {
+            "base": "text-gray-900",
+            "muted": "text-gray-500",
+            "small": "text-xs or text-sm"
+        }
+    },
+    "colors": {
+        "primary": {
+            "base": "bg-green-900",
+            "hover": "hover:bg-green-800",
+            "text": "text-green-900",
+            "light": "bg-green-50"
+        },
+        "secondary": {
+            "base": "bg-amber-600",
+            "hover": "hover:bg-amber-700",
+            "text": "text-amber-600",
+            "light": "bg-amber-50"
+        },
+        "accent": {
+            "purple": {
+                "base": "text-purple-600",
+                "bg": "bg-purple-50",
+                "icon": "text-purple-700"
+            },
+            "blue": {
+                "base": "text-blue-600",
+                "bg": "bg-blue-50"
+            }
+        },
+        "status": {
+            "success": "text-green-600 bg-green-50 or bg-green-100 text-green-800",
+            "error": "text-red-600 bg-red-50 or bg-red-500 text-white",
+            "warning": "text-amber-600 bg-amber-50",
+            "neutral": "text-gray-500 bg-gray-100"
+        },
+        "backgrounds": {
+            "main": "bg-white",
+            "secondary": "bg-gray-50",
+            "gradient": "bg-gradient-to-b from-gray-50 to-white"
+        }
+    },
+    "components": {
+        "buttons": {
+            "primary": "rounded-full font-bold transition-all transform hover:scale-105 active:scale-95 shadow-lg",
+            "secondary": "rounded-full or rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all",
+            "icon": "p-2 rounded-lg or rounded-full hover:bg-gray-50 transition-colors"
+        },
+        "cards": {
+            "base": "bg-white rounded-2xl or rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-md transition-all",
+            "interactive": "cursor-pointer hover:scale-[1.02] group"
+        },
+        "inputs": {
+            "base": "bg-gray-50 or bg-white border-none or border-gray-200 rounded-xl or rounded-full focus:ring-2 focus:ring-green-500/20"
+        },
+        "modals": {
+            "overlay": "bg-black/50 backdrop-blur-sm",
+            "content": "bg-white rounded-[2rem] shadow-2xl"
+        },
+        "charts": {
+            "container": "overflow-hidden relative",
+            "axisLabels": "text-[10px] text-gray-400 font-medium",
+            "tooltip": "bg-gray-900 text-white text-xs rounded-lg shadow-xl"
+        }
+    },
+    "layout": {
+        "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+        "grid": {
+            "products": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6",
+            "features": "grid grid-cols-1 md:grid-cols-3 gap-8"
+        },
+        "mobile": {
+            "hiddenOnSmall": "hidden sm:block",
+            "stackOnSmall": "flex-col sm:flex-row",
+            "padding": "p-4 sm:p-8"
+        }
+    },
+    "rules": {
+        "do": [
+            "Always use 'arbitrageDuka' (lowercase 'a' in logo, camelCase text) for branding.",
+            "Always use grid layouts for product lists, never tables.",
+            "Always display original price (strikethrough) and savings amount on offers.",
+            "Always wrap charts in overflow-hidden containers to prevent bleeding.",
+            "Always use rounded-full for primary action buttons.",
+            "Always use 'KES' currency prefix.",
+            "Always compact large numbers on charts (e.g., 150k)."
+        ],
+        "dont": [
+            "Do not use sharp corners (rounded-none). Use rounded-xl, 2xl, or full.",
+            "Do not use generic blue links. Use styled buttons or colored text.",
+            "Do not allow horizontal scrolling on mobile for main content.",
+            "Do not overlap header elements on small screens (hide secondary links)."
+        ]
+    }
+}

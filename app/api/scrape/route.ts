@@ -147,7 +147,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Check for explicit "Out of Stock" text
+    const isOutOfStock = /out of stock|currently unavailable|sold out/i.test(bodyText);
+
     if (!price) {
+      if (isOutOfStock) {
+        return NextResponse.json({
+          success: true,
+          price: null,
+          originalPrice: null,
+          name: name || 'Product',
+          imageUrl: null,
+          sku,
+          outOfStock: true,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       console.log('HTML Dump (truncated):', html.substring(0, 2000));
       return NextResponse.json(
         { success: false, error: 'Could not extract price from page' },

@@ -1,0 +1,587 @@
+{
+    "meta": {
+        "appName": "arbitrageDuka",
+        "purpose": "Enhanced ruleset additions for robust AI agent context",
+        "version": "1.1.0",
+        "lastUpdated": "2025-11-27",
+        "extends": [
+            "design_ruleset.json",
+            "functionality_ruleset.json"
+        ]
+    },
+    "references": {
+        "seeAlso": {
+            "design": "design_ruleset.json",
+            "functionality": "functionality_ruleset.json"
+        },
+        "integration": "Merge these additions into existing rulesets or reference as enhancement layer"
+    },
+    "edgeCases": {
+        "priceExtraction": [
+            {
+                "scenario": "Multiple prices on page (bundles/variations)",
+                "strategy": "Take first matching pattern in primary product container",
+                "example": "Bundle with 'KES 500' and 'KES 450' - extract 500"
+            },
+            {
+                "scenario": "Price in different currency (USD, EUR)",
+                "strategy": "Reject and log error - only accept KES",
+                "validation": "Must match /KES/ prefix"
+            },
+            {
+                "scenario": "Free items (price = 0)",
+                "strategy": "Validate with originalPrice existence - if originalPrice > 0, accept",
+                "example": "Free with purchase - originalPrice: 200, currentPrice: 0"
+            },
+            {
+                "scenario": "Price with decimal but no cents (.00)",
+                "strategy": "Normalize to include .00 for consistency",
+                "example": "KES 1500 becomes 1500.00"
+            }
+        ],
+        "urlHandling": [
+            {
+                "scenario": "URL with query parameters",
+                "strategy": "Strip query params before SKU extraction",
+                "example": "/p/12345?ref=search -> extract 12345"
+            },
+            {
+                "scenario": "Mobile URLs (m.carrefour)",
+                "strategy": "Convert to desktop equivalent: replace m.carrefour with www.carrefour",
+                "example": "m.carrefour.ke/... -> www.carrefour.ke/..."
+            },
+            {
+                "scenario": "Redirected URLs",
+                "strategy": "Follow redirect and use final URL for SKU extraction",
+                "note": "Update stored URL with final destination"
+            },
+            {
+                "scenario": "Malformed URLs (missing protocol)",
+                "strategy": "Prepend https:// if missing",
+                "validation": "Must result in valid URL object"
+            }
+        ],
+        "stockStatus": [
+            {
+                "scenario": "Temporarily unavailable vs permanently discontinued",
+                "strategy": "Mark as out_of_stock, monitor for 14 days before marking discontinued",
+                "threshold": "If OOS for 14+ consecutive checks, suggest removal"
+            },
+            {
+                "scenario": "Price exists but 'limited stock' message",
+                "strategy": "Treat as in stock but add warning notification",
+                "display": "Show 'Limited availability' badge"
+            }
+        ],
+        "dataIntegrity": [
+            {
+                "scenario": "Price spike (2x+ previous price)",
+                "strategy": "Flag for manual review before recording",
+                "userPrompt": "Price increased significantly. Verify this is correct?"
+            },
+            {
+                "scenario": "Price drops to near-zero (< KES 10)",
+                "strategy": "Validate originalPrice exists and is reasonable",
+                "action": "If suspicious, mark as 'requires verification'"
+            }
+        ]
+    },
+    "rulePriorities": {
+        "critical": [
+            {
+                "rule": "MUST implement rate limiting (2-4s randomized delay)",
+                "reason": "Prevents IP ban and respects server resources",
+                "consequence": "IP blacklist, 24hr+ cooldown required"
+            },
+            {
+                "rule": "MUST validate prices (1 < price < 1,000,000)",
+                "reason": "Prevents data corruption and false notifications",
+                "consequence": "Invalid price history, broken charts, user distrust"
+            },
+            {
+                "rule": "MUST sanitize all extracted text (remove HTML entities)",
+                "reason": "Prevents XSS and display issues",
+                "consequence": "Security vulnerability, broken UI"
+            },
+            {
+                "rule": "MUST store timestamps in ISO 8601 format",
+                "reason": "Ensures timezone consistency and proper sorting",
+                "consequence": "Incorrect price history chronology"
+            }
+        ],
+        "important": [
+            {
+                "rule": "SHOULD use SKU fallback when direct URL fails",
+                "reason": "Improves success rate by 20-30%",
+                "fallback": "If SKU unavailable, return graceful error"
+            },
+            {
+                "rule": "SHOULD check out-of-stock status on every scrape",
+                "reason": "Better UX, enables back-in-stock notifications",
+                "impact": "Prevents false 'price drop' alerts on OOS items"
+            },
+            {
+                "rule": "SHOULD cache successful scrapes for 60s",
+                "reason": "Prevents duplicate requests during rapid refreshes",
+                "implementation": "In-memory cache with TTL"
+            }
+        ],
+        "recommended": [
+            {
+                "rule": "COULD compact numbers on charts (150k format)",
+                "reason": "Cleaner display, especially on mobile",
+                "threshold": "Apply for values >= 1000"
+            },
+            {
+                "rule": "COULD preload product images",
+                "reason": "Faster perceived performance",
+                "implementation": "Use <link rel='preload'> for visible items"
+            }
+        ]
+    },
+    "errorRecovery": {
+        "networkTimeout": {
+            "timeout": "10s per request",
+            "strategy": "Retry once after 5s delay",
+            "maxRetries": 1,
+            "fallback": "Return cached data if < 24hrs old",
+            "userMessage": "Unable to fetch latest price. Showing last known price from {timestamp}."
+        },
+        "parseFailure": {
+            "strategy": "Try extraction methods in order: visual text -> JSON-LD -> meta tags",
+            "logging": {
+                "level": "error",
+                "data": "Log failed URL, HTML structure snippet (first 500 chars)",
+                "action": "Create GitHub issue template for manual investigation"
+            },
+            "fallback": "Return success: false with descriptive error message"
+        },
+        "rateLimitHit": {
+            "detection": "HTTP 429 or connection refused",
+            "strategy": "Exponential backoff: 60s, 300s (5m), 900s (15m)",
+            "maxBackoff": "900s",
+            "userMessage": "Carrefour is temporarily limiting requests. Next attempt in {time}.",
+            "persistBackoff": "Store in localStorage to survive page reloads"
+        },
+        "invalidPrice": {
+            "detection": "price < 1 || price > 1,000,000 || isNaN(price)",
+            "strategy": "Skip recording this price point, keep previous valid price",
+            "notification": "Show warning: 'Could not verify price. Using previous known price.'",
+            "logging": "Log for debugging with extracted raw text"
+        },
+        "duplicateProducts": {
+            "detection": "Same SKU or URL already tracked",
+            "strategy": "Merge price histories, keep earliest tracking start date",
+            "userPrompt": "This product is already tracked. View existing entry?",
+            "action": "Navigate to existing product in list"
+        }
+    },
+    "productLifecycle": {
+        "states": {
+            "active": "Product is in stock and scrapeable",
+            "out_of_stock": "Temporarily unavailable",
+            "price_dropped": "Current price < previous known price",
+            "deal": "Current price == historical lowest price",
+            "discontinued": "Out of stock for 14+ consecutive days",
+            "error": "Unable to scrape, technical issue"
+        },
+        "transitions": {
+            "active -> out_of_stock": {
+                "trigger": "outOfStock: true detected in scrape response",
+                "action": "Set currentPrice to null, add to priceHistory with outOfStock flag",
+                "notification": "'{productName}' is now out of stock"
+            },
+            "out_of_stock -> active": {
+                "trigger": "Price successfully extracted after previous OOS status",
+                "action": "Update currentPrice, clear outOfStock flag",
+                "notification": "'{productName}' is back in stock at KES {price}!"
+            },
+            "active -> price_dropped": {
+                "trigger": "currentPrice < previous priceHistory entry",
+                "action": "Record new price, calculate drop percentage",
+                "notification": "Price drop alert! '{productName}' now KES {price} (save KES {savings})",
+                "threshold": "Only notify if drop >= 5% or >= KES 50"
+            },
+            "active -> deal": {
+                "trigger": "currentPrice == lowestPrice in history",
+                "action": "Set isOnDeal: true, highlight in UI",
+                "notification": "Best price alert! '{productName}' at lowest recorded price",
+                "badge": "Display 'BEST DEAL' badge on product card"
+            },
+            "out_of_stock -> discontinued": {
+                "trigger": "OOS for 14 consecutive price checks (approx 14 days if checked daily)",
+                "action": "Suggest removal to user, archive in separate list",
+                "userPrompt": "'{productName}' has been unavailable for 2 weeks. Remove from tracking?",
+                "options": [
+                    "Remove",
+                    "Keep tracking",
+                    "Remind me in 7 days"
+                ]
+            },
+            "any -> error": {
+                "trigger": "Scraping fails 3+ consecutive times",
+                "action": "Mark product with error status, reduce check frequency",
+                "notification": "Having trouble tracking '{productName}'. Will retry less frequently.",
+                "retrySchedule": "Check once per week instead of on-demand"
+            }
+        },
+        "transitionRules": [
+            "A product can be in multiple transient states (e.g., price_dropped + deal simultaneously)",
+            "Persistent states (active, out_of_stock, discontinued, error) are mutually exclusive",
+            "Always log state transitions with timestamp for debugging",
+            "Notifications should respect user preferences (can be muted per product or globally)"
+        ]
+    },
+    "validation": {
+        "price": {
+            "min": 1,
+            "max": 1000000,
+            "regex": "^\\d+(\\.\\d{2})?$",
+            "normalization": "Remove commas, ensure 2 decimal places",
+            "errorMessage": "Invalid price format. Expected: KES 1.00 to KES 1,000,000.00"
+        },
+        "sku": {
+            "regex": "^\\d{4,12}$",
+            "minLength": 4,
+            "maxLength": 12,
+            "allowedCharacters": "Digits only",
+            "errorMessage": "SKU must be 4-12 digits"
+        },
+        "url": {
+            "allowedDomains": [
+                "carrefour.ke",
+                "carrefourkenya.com",
+                "www.carrefour.ke",
+                "www.carrefourkenya.com"
+            ],
+            "requiredProtocol": "https",
+            "pattern": "^https://(www\\.)?(carrefour\\.ke|carrefourkenya\\.com)/.*",
+            "errorMessage": "URL must be from Carrefour Kenya domain"
+        },
+        "productName": {
+            "minLength": 3,
+            "maxLength": 200,
+            "sanitization": "Remove HTML tags, decode entities, trim whitespace",
+            "errorMessage": "Product name must be 3-200 characters"
+        },
+        "imageUrl": {
+            "allowedProtocols": [
+                "https"
+            ],
+            "allowedFormats": [
+                "jpg",
+                "jpeg",
+                "png",
+                "webp"
+            ],
+            "maxSize": "Not validated (external resource)",
+            "fallback": "Use placeholder image if invalid or missing"
+        }
+    },
+    "performance": {
+        "budgets": {
+            "scrapingTimeout": {
+                "value": "10s per product",
+                "rationale": "Prevents hanging requests from blocking UI",
+                "enforcement": "Abort request and return timeout error"
+            },
+            "chartRenderTime": {
+                "value": "< 100ms",
+                "rationale": "Maintain 60fps for smooth interactions",
+                "measurement": "Use performance.mark() and performance.measure()",
+                "optimization": "Limit chart data points to 100 max, aggregate if necessary"
+            },
+            "localStorageSize": {
+                "value": "< 5MB total",
+                "rationale": "Browser localStorage limit is typically 5-10MB",
+                "monitoring": "Check JSON.stringify(localStorage).length periodically",
+                "mitigation": "Archive old price history entries (keep only last 365 days)"
+            },
+            "priceHistoryLength": {
+                "value": "Max 365 entries per product",
+                "rationale": "Balances historical data with storage constraints",
+                "enforcement": "Rotate out oldest entries when limit reached",
+                "aggregation": "For entries > 90 days old, aggregate to weekly averages"
+            },
+            "concurrentScrapes": {
+                "value": "Max 2 simultaneous requests",
+                "rationale": "Prevents overwhelming target server and user's browser",
+                "implementation": "Queue system with max 2 active promises"
+            }
+        },
+        "optimizations": [
+            "Debounce price check buttons (500ms)",
+            "Lazy load product images (intersection observer)",
+            "Memoize price calculations and chart data",
+            "Use React.memo for product cards",
+            "Virtualize long product lists (>50 items)",
+            "Cache parsed chart data for 5 minutes"
+        ]
+    },
+    "designEnhancements": {
+        "spacing": {
+            "scale": [
+                4,
+                8,
+                12,
+                16,
+                24,
+                32,
+                48,
+                64
+            ],
+            "tokens": {
+                "xs": "4px (space-1)",
+                "sm": "8px (space-2)",
+                "md": "16px (space-4)",
+                "lg": "24px (space-6)",
+                "xl": "32px (space-8)",
+                "2xl": "48px (space-12)",
+                "3xl": "64px (space-16)"
+            },
+            "component": {
+                "cardPadding": "p-6 sm:p-8",
+                "sectionGap": "space-y-8",
+                "gridGap": "gap-6",
+                "buttonPadding": "px-6 py-3 or px-8 py-4",
+                "inputPadding": "px-4 py-3"
+            }
+        },
+        "shadows": {
+            "none": "shadow-none",
+            "sm": "shadow-sm (subtle card elevation)",
+            "md": "shadow-md (default card)",
+            "lg": "shadow-lg (modal, dropdown)",
+            "xl": "shadow-xl (tooltip, notification)",
+            "2xl": "shadow-2xl (modal overlay)",
+            "transitions": {
+                "cardHover": "shadow-sm -> shadow-md",
+                "buttonHover": "shadow-lg -> shadow-xl"
+            },
+            "usage": {
+                "cards": "shadow-sm default, shadow-md on hover",
+                "modals": "shadow-2xl",
+                "tooltips": "shadow-xl",
+                "buttons": "shadow-lg (primary only)"
+            }
+        },
+        "animation": {
+            "durations": {
+                "fast": "150ms (hover, focus)",
+                "normal": "200ms (default)",
+                "slow": "300ms (modal open/close)"
+            },
+            "easings": {
+                "default": "ease-in-out",
+                "bounce": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+                "smooth": "cubic-bezier(0.4, 0, 0.2, 1)"
+            },
+            "patterns": {
+                "scaleOnHover": "hover:scale-[1.02] transition-transform duration-200",
+                "fadeIn": "animate-fade-in opacity-0 -> opacity-100",
+                "slideUp": "animate-slide-up translate-y-4 -> translate-y-0"
+            }
+        },
+        "accessibility": {
+            "contrast": {
+                "minimum": "WCAG AA (4.5:1 for normal text, 3:1 for large text)",
+                "target": "WCAG AAA (7:1 for normal text, 4.5:1 for large text)",
+                "testing": "Use browser DevTools contrast checker"
+            },
+            "focusIndicators": {
+                "default": "ring-2 ring-green-500 ring-offset-2",
+                "error": "ring-2 ring-red-500 ring-offset-2",
+                "visible": "Always show focus ring on keyboard navigation"
+            },
+            "screenReaderText": {
+                "class": "sr-only (visible only to screen readers)",
+                "usage": "Add to icon buttons, status indicators, chart data points",
+                "example": "<span class='sr-only'>Price decreased by 15%</span>"
+            },
+            "ariaLabels": [
+                "Use aria-label for icon-only buttons",
+                "Use aria-describedby for form validation messages",
+                "Use role='status' for dynamic notifications",
+                "Use aria-live='polite' for price updates"
+            ],
+            "keyboardNavigation": [
+                "All interactive elements must be keyboard accessible",
+                "Tab order should follow visual hierarchy",
+                "Escape key closes modals and dropdowns",
+                "Enter/Space activates buttons and links"
+            ]
+        },
+        "responsiveBreakpoints": {
+            "mobile": "< 640px (sm)",
+            "tablet": "640px - 1024px (sm to lg)",
+            "desktop": "> 1024px (lg+)",
+            "priorities": [
+                "Mobile-first approach (design for smallest screen first)",
+                "Touch targets minimum 44x44px on mobile",
+                "Readable text sizes (minimum 16px on mobile)",
+                "Adequate spacing for fat-finger syndrome"
+            ]
+        }
+    },
+    "testScenarios": {
+        "scraping": [
+            {
+                "id": "normal-product",
+                "scenario": "Normal product page with current and original price",
+                "url": "https://www.carrefour.ke/mafken/en/p/12345",
+                "expectedOutput": {
+                    "success": true,
+                    "price": 1500.00,
+                    "originalPrice": 2000.00,
+                    "name": "Example Product Name",
+                    "imageUrl": "https://...",
+                    "sku": "12345",
+                    "outOfStock": false
+                }
+            },
+            {
+                "id": "out-of-stock",
+                "scenario": "Out of stock product",
+                "url": "https://www.carrefour.ke/mafken/en/p/99999",
+                "expectedOutput": {
+                    "success": true,
+                    "price": null,
+                    "outOfStock": true,
+                    "name": "Example Product",
+                    "sku": "99999"
+                }
+            },
+            {
+                "id": "no-discount",
+                "scenario": "Product with no original price (no deal)",
+                "url": "https://www.carrefour.ke/mafken/en/p/54321",
+                "expectedOutput": {
+                    "success": true,
+                    "price": 800.00,
+                    "originalPrice": null,
+                    "outOfStock": false
+                }
+            },
+            {
+                "id": "invalid-url",
+                "scenario": "Invalid or non-existent product URL",
+                "url": "https://www.carrefour.ke/mafken/en/p/invalid",
+                "expectedOutput": {
+                    "success": false,
+                    "error": "Product not found or page structure changed"
+                }
+            },
+            {
+                "id": "rate-limited",
+                "scenario": "Rate limit hit during scraping",
+                "expectedOutput": {
+                    "success": false,
+                    "error": "Rate limit exceeded",
+                    "retryAfter": 60
+                }
+            }
+        ],
+        "priceTracking": [
+            {
+                "id": "price-drop-notification",
+                "scenario": "Price drops below previous price",
+                "setup": "Product tracked at KES 2000",
+                "action": "Scrape returns KES 1500",
+                "expectedBehavior": [
+                    "Update currentPrice to 1500",
+                    "Add entry to priceHistory",
+                    "Generate notification: 'Price drop alert! Save KES 500'",
+                    "Update lowestPrice if 1500 < previous lowest"
+                ]
+            },
+            {
+                "id": "back-in-stock",
+                "scenario": "Previously OOS product becomes available",
+                "setup": "Product marked outOfStock: true",
+                "action": "Scrape returns valid price",
+                "expectedBehavior": [
+                    "Clear outOfStock flag",
+                    "Update currentPrice",
+                    "Generate notification: 'Back in stock!'",
+                    "Highlight in UI with 'NEW' badge for 24hrs"
+                ]
+            },
+            {
+                "id": "deal-status",
+                "scenario": "Product reaches lowest historical price",
+                "setup": "lowestPrice: 1200, currentPrice: 1500",
+                "action": "Scrape returns 1200",
+                "expectedBehavior": [
+                    "Set isOnDeal: true",
+                    "Display 'BEST DEAL' badge",
+                    "Generate notification: 'Best price alert!'",
+                    "Move to top of product list"
+                ]
+            }
+        ],
+        "ui": [
+            {
+                "id": "mobile-responsiveness",
+                "viewport": "375x667 (iPhone SE)",
+                "requirements": [
+                    "No horizontal scrolling",
+                    "Product grid switches to single column",
+                    "Navigation menu collapses to hamburger",
+                    "Touch targets >= 44x44px"
+                ]
+            },
+            {
+                "id": "chart-overflow",
+                "scenario": "Price history chart with many data points",
+                "requirements": [
+                    "Chart stays within container (no bleeding)",
+                    "X-axis labels don't overlap",
+                    "Tooltip displays on hover/tap",
+                    "Responsive to container size changes"
+                ]
+            },
+            {
+                "id": "empty-states",
+                "scenarios": [
+                    "No products tracked yet - show onboarding CTA",
+                    "No price history - show 'Start tracking' message",
+                    "No notifications - show 'All caught up' message",
+                    "No deals found - show 'Check back later' message"
+                ]
+            }
+        ]
+    },
+    "changelog": [
+        {
+            "version": "1.1.0",
+            "date": "2025-11-27",
+            "changes": [
+                "Added comprehensive edge case handling",
+                "Defined rule priorities (critical, important, recommended)",
+                "Implemented error recovery strategies",
+                "Created product lifecycle state machine",
+                "Added validation schemas for all data types",
+                "Defined performance budgets",
+                "Enhanced design system with spacing and shadows",
+                "Added accessibility guidelines (WCAG AA+)",
+                "Created test scenario documentation"
+            ]
+        },
+        {
+            "version": "1.0.0",
+            "date": "2025-11-27",
+            "changes": [
+                "Initial ruleset creation",
+                "Defined core scraping strategy",
+                "Established design system",
+                "Created functionality specifications"
+            ]
+        }
+    ],
+    "implementationNotes": {
+        "integration": "These additions should be merged into existing design_ruleset.json and functionality_ruleset.json OR kept as a separate enhancement_ruleset.json that agents can reference alongside the core rulesets",
+        "priority": "Implement critical rules first, then important, then recommended",
+        "testing": "Use testScenarios section to create automated tests",
+        "evolution": "Update changelog when rules change, increment version appropriately"
+    }
+}

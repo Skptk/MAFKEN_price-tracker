@@ -29,10 +29,13 @@ export interface TrackedItem {
     offerStartDate?: string;
     offerEndDate?: string;
     lastOfferDuration?: number;
+    lastManualCheck?: string; // Track when user manually checked this item
+    isUnavailable?: boolean; // Mark items that can no longer be found
+    outOfStock?: boolean; // Track if item is out of stock
 }
 
 export interface AlertMessage {
-    id: number;
+    id: string;
     sku: string;
     name: string;
     message: string;

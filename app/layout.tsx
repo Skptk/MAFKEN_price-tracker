@@ -8,8 +8,8 @@ const funnelDisplay = Funnel_Display({
 });
 
 export const metadata: Metadata = {
-  title: 'aggregateDuka - Track Prices & Save',
-  description: 'Track prices from Carrefour Kenya and get alerts when they drop.',
+  title: 'arbitrageDuka - Track Prices & Save',
+  description: 'Track prices, get alerts, and save money on your favorite products.',
   icons: {
     icon: '/favicon.svg',
   },

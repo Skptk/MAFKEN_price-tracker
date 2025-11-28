@@ -1,0 +1,163 @@
+{
+    "meta": {
+        "appName": "arbitrageDuka",
+        "purpose": "Price tracking and arbitrage detection for Carrefour Kenya products",
+        "version": "1.0.0",
+        "lastUpdated": "2025-11-27"
+    },
+    "scraping": {
+        "strategy": {
+            "primary": "Cheerio-based HTML parsing for individual product pages",
+            "fallback": "Puppeteer for JavaScript-heavy pages (offers discovery)",
+            "rateLimit": "2-4 second delay between requests (randomized)"
+        },
+        "priceExtraction": {
+            "order": [
+                "1. Visual text parsing (regex: /KES\\s*([\\d,]+(?:\\.\\d{2})?)/g)",
+                "2. JSON-LD structured data (application/ld+json)",
+                "3. Meta tags (og:price:amount, product:price:amount)"
+            ],
+            "rules": [
+                "Always remove commas from price strings before parsing",
+                "Extract both current and original price (highest value)",
+                "Skip prices in 'save' context to avoid false positives"
+            ]
+        },
+        "productDetection": {
+            "nameExtraction": [
+                "og:title meta tag",
+                "title tag (remove 'Buy' prefix, split by '|')",
+                "JSON-LD product.name"
+            ],
+            "skuExtraction": "Extract from URL pattern: /(\\d+)$",
+            "imageExtraction": [
+                "og:image meta tag",
+                ".product-image img, .product-img img",
+                "img[itemprop='image']"
+            ]
+        },
+        "outOfStockDetection": {
+            "method": "Regex test on body text",
+            "patterns": "/(out of stock|currently unavailable|sold out)/i",
+            "response": "Return success: true with price: null and outOfStock: true"
+        }
+    },
+    "api": {
+        "endpoints": {
+            "/api/scrape": {
+                "method": "POST",
+                "purpose": "Scrape individual product price and details",
+                "input": {
+                    "url": "Product page URL",
+                    "sku": "Optional SKU for fallback search"
+                },
+                "output": {
+                    "success": "boolean",
+                    "price": "number | null",
+                    "originalPrice": "number | null",
+                    "name": "string",
+                    "imageUrl": "string | null",
+                    "sku": "string | undefined",
+                    "outOfStock": "boolean (optional)",
+                    "timestamp": "ISO string"
+                },
+                "fallback": "If URL fails and SKU provided, search via: https://www.carrefourkenya.com/mafken/en/search/?text={sku}"
+            },
+            "/api/discover-offers": {
+                "method": "POST",
+                "purpose": "Scrape promotional pages for offers using Puppeteer",
+                "targets": [
+                    "https://www.carrefour.ke/mafken/en/c/ken-dod-offers",
+                    "https://www.carrefour.ke/mafken/en/c/ken-online-exclusives",
+                    "https://www.carrefour.ke/mafken/en/c/ken-flash-sale"
+                ],
+                "strategy": "Find product containers with exactly 1 product link to avoid data mixing",
+                "output": {
+                    "success": "boolean",
+                    "offers": "Array of {name, price, originalPrice, imageUrl, url, sku, discount}",
+                    "timestamp": "ISO string"
+                }
+            }
+        },
+        "rateLimiting": {
+            "delay": "2000-4000ms randomized before each request",
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+                "Accept-Language": "en-US,en;q=0.9"
+            },
+            "errorHandling": "Return 429 error if rate limit exceeded by server"
+        }
+    },
+    "features": {
+        "productTracking": {
+            "storage": "localStorage via custom hook (useLocalStorage)",
+            "dataModel": {
+                "id": "Unique identifier",
+                "name": "Product name",
+                "currentPrice": "Latest price",
+                "lowestPrice": "Historical lowest",
+                "highestPrice": "Historical highest",
+                "url": "Product page URL",
+                "sku": "Product SKU",
+                "imageUrl": "Product image",
+                "priceHistory": "Array of {price, timestamp, outOfStock}",
+                "isOnDeal": "boolean (currentPrice == lowestPrice)",
+                "outOfStock": "boolean"
+            },
+            "priceCheckCooldown": "60 seconds per product to prevent spam"
+        },
+        "savingsCalculation": {
+            "method": "Sum of (originalPrice - currentPrice) for all tracked items",
+            "chartPeriod": "Last 14 days",
+            "compactFormat": "150k for values >= 1000, 1.5M for >= 1000000",
+            "targetSavings": "User-defined goal stored in localStorage"
+        },
+        "notifications": {
+            "triggers": [
+                "Price drop detected",
+                "Product back in stock",
+                "Deal status change"
+            ],
+            "storage": "localStorage notifications array",
+            "display": "Modal popup with list of recent notifications"
+        },
+        "offerDiscovery": {
+            "trigger": "Manual refresh button click",
+            "caching": "Client-side state, no persistence",
+            "tracking": "Users can add discovered offers to their tracked products"
+        }
+    },
+    "rules": {
+        "do": [
+            "Always implement 2-4 second delay before scraping",
+            "Always check for out-of-stock status",
+            "Always extract both current and original price if available",
+            "Always store price history with timestamps",
+            "Always use SKU fallback if direct URL fails",
+            "Always validate prices (1 < price < 1,000,000)",
+            "Always use isolated containers for multi-product scraping"
+        ],
+        "dont": [
+            "Do not scrape without rate limiting",
+            "Do not store prices without timestamps",
+            "Do not mix data from multiple products in a container",
+            "Do not allow price checks more frequently than 60 seconds",
+            "Do not parse prices with commas directly (remove commas first)",
+            "Do not assume a product is in stock if price extraction fails"
+        ]
+    },
+    "puppeteer": {
+        "configuration": {
+            "reuse": "Single browser instance reused across requests",
+            "viewport": "1920x1080",
+            "headless": "true (chromium.headless)",
+            "waitStrategy": "domcontentloaded + 2s delay + selector wait (5s timeout)"
+        },
+        "antiDetection": {
+            "userAgent": "Mozilla/5.0 Chrome/120.0.0.0",
+            "webdriver": "navigator.webdriver set to false",
+            "viewport": "Realistic desktop dimensions",
+            "headers": "Accept-Language, Accept headers set"
+        }
+    }
+}

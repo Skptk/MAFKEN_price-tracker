@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
@@ -7,19 +9,19 @@ export default function PrivacyPage() {
         <div className="min-h-screen bg-[#f3f4f6] p-4 sm:p-8 font-sans">
             <div className="max-w-4xl mx-auto bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-8 sm:p-12">
-                    <Link href="/" className="inline-flex items-center gap-2 text-green-700 font-medium mb-8 hover:underline">
+                    <Link href="/dashboard" className="inline-flex items-center gap-2 text-green-700 font-medium mb-8 hover:underline">
                         <ArrowLeft size={20} />
                         Back to Dashboard
                     </Link>
 
                     <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-                    <p className="text-gray-500 mb-8">Last updated: November 25, 2025</p>
+                    <p className="text-gray-500 mb-8">Last updated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</p>
 
                     <div className="space-y-8 text-gray-700 leading-relaxed">
                         <section>
                             <h2 className="text-xl font-bold text-gray-900 mb-3">1. Introduction</h2>
                             <p>
-                                aggregateDuka ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information
+                                arbitrageDuka ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information
                                 when you visit our website and use our price tracking services.
                             </p>
                         </section>
